@@ -42,15 +42,22 @@ function StatBgIcon({ icon, color }) {
 export default function AdminDashboard() {
   const [tab, setTab] = useState('products')
   const [theme, setTheme] = useState(() => localStorage.getItem('yusano_theme') || 'light')
+  const [products, setProducts] = useState([])
+  const [messages, setMessages] = useState([])
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
-  const products = getProducts()
-  const messages = getMessages()
-  const unread = messages.filter(m => !m.read).length
-  const readPercent = messages.length > 0 ? Math.round(((messages.length - unread) / messages.length) * 100) : 0
 
   useEffect(() => {
     if (!isLoggedIn()) navigate('/admin')
   }, [navigate])
+
+  useEffect(() => {
+    Promise.all([getProducts(), getMessages()]).then(([prods, msgs]) => {
+      setProducts(prods)
+      setMessages(msgs)
+      setLoading(false)
+    })
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('yusano_theme', theme)
@@ -64,6 +71,9 @@ export default function AdminDashboard() {
   }
 
   if (!isLoggedIn()) return null
+
+  const unread = messages.filter(m => !m.read).length
+  const readPercent = messages.length > 0 ? Math.round(((messages.length - unread) / messages.length) * 100) : 0
 
   return (
     <div className="admin-layout" data-theme={theme}>
@@ -144,61 +154,67 @@ export default function AdminDashboard() {
         </aside>
 
         <main className="admin-main">
-          <div className="admin-stats">
-            <div className="admin-stat-card">
-              <StatBgIcon icon={<IconPackage />} color="#e67e22" />
-              <div className="admin-stat-icon orange">
-                <IconPackage />
+          {loading ? (
+            <div className="admin-loading">Memuat data...</div>
+          ) : (
+            <>
+              <div className="admin-stats">
+                <div className="admin-stat-card">
+                  <StatBgIcon icon={<IconPackage />} color="#e67e22" />
+                  <div className="admin-stat-icon orange">
+                    <IconPackage />
+                  </div>
+                  <div className="admin-stat-info">
+                    <h4>Total Produk</h4>
+                    <p>{products.length}</p>
+                  </div>
+                </div>
+                <div className="admin-stat-card">
+                  <StatBgIcon icon={<IconInbox />} color="#3b82f6" />
+                  <div className="admin-stat-icon blue">
+                    <IconInbox />
+                  </div>
+                  <div className="admin-stat-info">
+                    <h4>Total Pesan</h4>
+                    <p>{messages.length}</p>
+                  </div>
+                </div>
+                <div className="admin-stat-card">
+                  <StatBgIcon icon={<IconCheckCircle />} color="#22c55e" />
+                  <div className="admin-stat-icon green">
+                    <IconCheckCircle />
+                  </div>
+                  <div className="admin-stat-info">
+                    <h4>Pesan Dibaca</h4>
+                    <p>{messages.length - unread}</p>
+                  </div>
+                  <div className="admin-stat-bar">
+                    <div className="admin-stat-bar-fill green" style={{ width: `${readPercent}%`, background: '#22c55e' }} />
+                  </div>
+                </div>
+                <div className="admin-stat-card">
+                  <StatBgIcon icon={<IconAlertCircle />} color="#ef4444" />
+                  <div className="admin-stat-icon red">
+                    <IconAlertCircle />
+                  </div>
+                  <div className="admin-stat-info">
+                    <h4>Belum Dibaca</h4>
+                    <p>{unread}</p>
+                  </div>
+                  <div className="admin-stat-bar">
+                    <div className="admin-stat-bar-fill" style={{ width: `${100 - readPercent}%`, background: '#ef4444' }} />
+                  </div>
+                </div>
               </div>
-              <div className="admin-stat-info">
-                <h4>Total Produk</h4>
-                <p>{products.length}</p>
-              </div>
-            </div>
-            <div className="admin-stat-card">
-              <StatBgIcon icon={<IconInbox />} color="#3b82f6" />
-              <div className="admin-stat-icon blue">
-                <IconInbox />
-              </div>
-              <div className="admin-stat-info">
-                <h4>Total Pesan</h4>
-                <p>{messages.length}</p>
-              </div>
-            </div>
-            <div className="admin-stat-card">
-              <StatBgIcon icon={<IconCheckCircle />} color="#22c55e" />
-              <div className="admin-stat-icon green">
-                <IconCheckCircle />
-              </div>
-              <div className="admin-stat-info">
-                <h4>Pesan Dibaca</h4>
-                <p>{messages.length - unread}</p>
-              </div>
-              <div className="admin-stat-bar">
-                <div className="admin-stat-bar-fill green" style={{ width: `${readPercent}%`, background: '#22c55e' }} />
-              </div>
-            </div>
-            <div className="admin-stat-card">
-              <StatBgIcon icon={<IconAlertCircle />} color="#ef4444" />
-              <div className="admin-stat-icon red">
-                <IconAlertCircle />
-              </div>
-              <div className="admin-stat-info">
-                <h4>Belum Dibaca</h4>
-                <p>{unread}</p>
-              </div>
-              <div className="admin-stat-bar">
-                <div className="admin-stat-bar-fill" style={{ width: `${100 - readPercent}%`, background: '#ef4444' }} />
-              </div>
-            </div>
-          </div>
 
-          <div className="admin-tab-content" key={tab}>
-            {tab === 'products' && <AdminProducts />}
-            {tab === 'messages' && <AdminMessages />}
-            {tab === 'categories' && <AdminCategories />}
-            {tab === 'settings' && <AdminSettings />}
-          </div>
+              <div className="admin-tab-content" key={tab}>
+                {tab === 'products' && <AdminProducts />}
+                {tab === 'messages' && <AdminMessages />}
+                {tab === 'categories' && <AdminCategories />}
+                {tab === 'settings' && <AdminSettings />}
+              </div>
+            </>
+          )}
         </main>
       </div>
     </div>

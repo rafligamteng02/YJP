@@ -21,6 +21,7 @@ export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [product, setProduct] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
   const [lang, setLang] = useState(() => localStorage.getItem('lang') || defaultLang)
 
@@ -29,22 +30,29 @@ export default function ProductDetail() {
   }, [theme])
 
   useEffect(() => {
-    const p = getProductById(id)
-    if (!p) navigate('/')
-    else setProduct(p)
+    getProductById(id).then(p => {
+      if (!p) navigate('/')
+      else setProduct(p)
+      setLoading(false)
+    })
   }, [id, navigate])
+
+  const [relatedProducts, setRelatedProducts] = useState([])
+
+  useEffect(() => {
+    if (!product) return
+    getProducts().then(all => {
+      setRelatedProducts(all.filter(p => p.id !== product.id && p.category.id === product.category.id).slice(0, 4))
+    })
+  }, [product])
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
   const toggleLang = () => setLang(prev => prev === 'id' ? 'en' : 'id')
 
   const t = (key) => translations[lang]?.[key] || key
 
+  if (loading) return <div className="product-detail-page"><div className="container" style={{ paddingTop: 200, textAlign: 'center', color: 'var(--text-muted)' }}>Memuat...</div></div>
   if (!product) return null
-
-  const allProducts = getProducts()
-  const relatedProducts = allProducts.filter(
-    p => p.id !== product.id && p.category.id === product.category.id
-  ).slice(0, 4)
 
   return (
     <div className="product-detail-page">

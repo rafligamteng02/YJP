@@ -1,39 +1,53 @@
 import { useState, useEffect } from 'react'
-import { getCategories, saveCategories } from '../data/adminData'
+import { getCategories, addCategory, deleteCategory } from '../data/adminData'
 
 export default function AdminCategories() {
   const [categories, setCategories] = useState([])
+  const [loading, setLoading] = useState(true)
   const [nameId, setNameId] = useState('')
   const [nameEn, setNameEn] = useState('')
   const [toast, setToast] = useState(null)
 
-  useEffect(() => { setCategories(getCategories()) }, [])
+  useEffect(() => {
+    getCategories().then(data => {
+      setCategories(data)
+      setLoading(false)
+    })
+  }, [])
 
-  const refresh = () => setCategories(getCategories())
+  const refresh = () => getCategories().then(setCategories)
 
   const showToast = (msg) => {
     setToast({ message: msg })
     setTimeout(() => setToast(null), 3000)
   }
 
-  const handleAdd = (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault()
     if (!nameId.trim() || !nameEn.trim()) return
-    const updated = [...categories, { id: Date.now(), nameId: nameId.trim(), nameEn: nameEn.trim() }]
-    saveCategories(updated)
-    refresh()
-    setNameId('')
-    setNameEn('')
-    showToast('Kategori berhasil ditambahkan')
+    try {
+      await addCategory({ nameId: nameId.trim(), nameEn: nameEn.trim() })
+      await refresh()
+      setNameId('')
+      setNameEn('')
+      showToast('Kategori berhasil ditambahkan')
+    } catch (err) {
+      showToast(err.message || 'Terjadi kesalahan')
+    }
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!confirm('Hapus kategori ini?')) return
-    const updated = categories.filter(c => c.id !== id)
-    saveCategories(updated)
-    refresh()
-    showToast('Kategori berhasil dihapus')
+    try {
+      await deleteCategory(id)
+      await refresh()
+      showToast('Kategori berhasil dihapus')
+    } catch (err) {
+      showToast(err.message || 'Terjadi kesalahan')
+    }
   }
+
+  if (loading) return <div className="admin-loading">Memuat kategori...</div>
 
   return (
     <div className="admin-section">

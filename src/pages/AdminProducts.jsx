@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getProducts, saveProducts, getCategories, iconOptions } from '../data/adminData'
+import { getProducts, getCategories, addProduct, updateProduct, deleteProduct, iconOptions } from '../data/adminData'
 
 const emptyForm = { nameId: '', nameEn: '', icon: 'pipe', categoryId: 'Mining', categoryEn: 'Mining', descId: '', descEn: '', image: '', features: [], specs: [] }
 
@@ -14,14 +14,19 @@ export default function AdminProducts() {
   const [imagePreview, setImagePreview] = useState('')
   const [categories, setCategories] = useState([])
   const [toast, setToast] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
-    setProducts(getProducts())
-    setCategories(getCategories())
+    Promise.all([getProducts(), getCategories()]).then(([prods, cats]) => {
+      setProducts(prods)
+      setCategories(cats)
+      setLoading(false)
+    })
   }, [])
 
-  const refresh = () => setProducts(getProducts())
+  const refresh = () => getProducts().then(setProducts)
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
@@ -59,8 +64,9 @@ export default function AdminProducts() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    setSubmitting(true)
     const item = {
       icon: form.icon,
       name: { id: form.nameId, en: form.nameEn },
@@ -70,24 +76,26 @@ export default function AdminProducts() {
       features: form.features.filter(f => f.id || f.en).map(f => ({ id: f.id, en: f.en })),
       specs: form.specs.filter(s => s.keyId || s.keyEn || s.valueId || s.valueEn).map(s => ({ key: { id: s.keyId, en: s.keyEn }, value: { id: s.valueId, en: s.valueEn } })),
     }
-    if (editingId) {
-      const updated = products.map(p => p.id === editingId ? { ...p, ...item } : p)
-      saveProducts(updated)
-      showToast('success', 'Produk berhasil diperbarui')
-    } else {
-      const updated = [...products, { id: Date.now(), ...item }]
-      saveProducts(updated)
-      showToast('success', 'Produk berhasil ditambahkan')
+    try {
+      if (editingId) {
+        await updateProduct(editingId, item)
+        showToast('success', 'Produk berhasil diperbarui')
+      } else {
+        await addProduct(item)
+        showToast('success', 'Produk berhasil ditambahkan')
+      }
+      await refresh()
+    } catch (err) {
+      showToast('error', err.message || 'Terjadi kesalahan')
     }
-    refresh()
     setForm(emptyForm)
     setEditingId(null)
     setShowForm(false)
     setImagePreview('')
+    setSubmitting(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
+    document.body.style.overflow = ''
   }
-
-  const handleEdit = (p) => { openForm(p) }
 
   const [search, setSearch] = useState('')
 
@@ -102,11 +110,15 @@ export default function AdminProducts() {
     )
   })
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!confirm('Hapus produk ini?')) return
-    saveProducts(products.filter(p => p.id !== id))
-    refresh()
-    showToast('success', 'Produk berhasil dihapus')
+    try {
+      await deleteProduct(id)
+      await refresh()
+      showToast('success', 'Produk berhasil dihapus')
+    } catch (err) {
+      showToast('error', err.message || 'Terjadi kesalahan')
+    }
   }
 
   const handleCancel = () => {
@@ -184,6 +196,8 @@ export default function AdminProducts() {
       ta.setSelectionRange(start + 2, start + 2)
     }, 0)
   }
+
+  if (loading) return <div className="admin-loading">Memuat produk...</div>
 
   return (
     <div className="admin-section">
@@ -315,7 +329,7 @@ export default function AdminProducts() {
             </div>
           </div>
           <div className="admin-form-actions">
-                <button type="submit" className="admin-btn admin-btn-primary">{editingId ? 'Simpan' : 'Tambah'}</button>
+                <button type="submit" className="admin-btn admin-btn-primary" disabled={submitting}>{submitting ? 'Menyimpan...' : editingId ? 'Simpan' : 'Tambah'}</button>
                 <button type="button" className="admin-btn admin-btn-secondary" onClick={handleCancel}>Batal</button>
               </div>
             </form>
@@ -350,7 +364,7 @@ export default function AdminProducts() {
                 <td>{p.name.en}</td>
                 <td><span className="admin-badge">{p.category.id}</span></td>
                 <td className="admin-actions">
-                  <button className="admin-btn admin-btn-sm admin-btn-secondary" onClick={() => handleEdit(p)}>Edit</button>
+                  <button className="admin-btn admin-btn-sm admin-btn-secondary" onClick={() => openForm(p)}>Edit</button>
                   <button className="admin-btn admin-btn-sm admin-btn-danger" onClick={() => handleDelete(p.id)}>Hapus</button>
                 </td>
               </tr>

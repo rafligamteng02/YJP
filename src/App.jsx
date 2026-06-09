@@ -338,8 +338,10 @@ function MainWebsite() {
   const [formErrors, setFormErrors] = useState({})
   const [formSubmitted, setFormSubmitted] = useState(false)
   const [toast, setToast] = useState(null)
-  const [products] = useState(() => getProducts())
+  const [products, setProducts] = useState([])
   const [activeSection, setActiveSection] = useState('hero')
+
+  useEffect(() => { getProducts().then(setProducts) }, [])
 
   const t = useCallback((key) => translations[lang][key] || key, [lang])
 
@@ -422,12 +424,12 @@ function MainWebsite() {
     return errors
   }
 
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault()
     const errors = validateForm()
     setFormErrors(errors)
     if (Object.keys(errors).length > 0) return
-    addMessage({ name: formData.name, email: formData.email, subject: formData.subject, message: formData.message })
+    await addMessage({ name: formData.name, email: formData.email, subject: formData.subject, message: formData.message })
     setFormSubmitted(true)
     setFormData({ name: '', email: '', subject: '', message: '' })
     setToast({ type: 'success', message: t('toast_sent') })

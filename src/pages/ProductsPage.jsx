@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { getProducts } from '../data/adminData'
 import {
@@ -17,8 +17,12 @@ const iconMap = {
 }
 
 export default function ProductsPage() {
-  const products = useMemo(() => getProducts(), [])
+  const [products, setProducts] = useState([])
   const [activeCategory, setActiveCategory] = useState('all')
+
+  useEffect(() => {
+    getProducts().then(setProducts)
+  }, [])
 
   const categories = useMemo(() => {
     const set = new Set()

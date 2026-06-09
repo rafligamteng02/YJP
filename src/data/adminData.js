@@ -1,11 +1,157 @@
-﻿const ADMIN_EMAIL = 'admin1@gmail.com'
-const PRODUCTS_VERSION = 5
-const CATEGORIES_VERSION = 1
+﻿import { supabase } from '../lib/supabase'
 
-const defaultCategories = [
-  { id: 1, nameId: 'Mining', nameEn: 'Mining' },
-  { id: 2, nameId: 'Oil & Gas', nameEn: 'Oil & Gas' },
+const ADMIN_EMAIL = 'admin1@gmail.com'
+
+export const iconOptions = [
+  { value: 'pipe', label: 'Pipe' },
+  { value: 'valve', label: 'Valve' },
+  { value: 'bolt', label: 'Bolt' },
+  { value: 'generator', label: 'Generator' },
+  { value: 'safety', label: 'Safety' },
+  { value: 'tool', label: 'Tool' },
+  { value: 'oilgas', label: 'Oil & Gas' },
 ]
+
+async function migrate(table, localKey, defaults, transform) {
+  const { count } = await supabase.from(table).select('*', { count: 'exact', head: true })
+  if (count > 0) return
+  let data = localStorage.getItem(localKey)
+  if (data) {
+    data = JSON.parse(data)
+    localStorage.removeItem(localKey)
+  } else if (defaults) {
+    data = defaults
+  } else {
+    return
+  }
+  if (transform) data = data.map(transform)
+  await supabase.from(table).insert(data)
+}
+
+export async function getProducts() {
+  await migrate('products', 'yusano_products', defaultProducts, d => ({
+    ...d,
+    created_at: d.created_at || new Date().toISOString(),
+  }))
+  const { data, error } = await supabase.from('products').select('*').order('id')
+  if (error) throw error
+  return data || []
+}
+
+export async function getProductById(id) {
+  const { data, error } = await supabase.from('products').select('*').eq('id', Number(id)).single()
+  if (error && error.code === 'PGRST116') return null
+  if (error) throw error
+  return data
+}
+
+export async function addProduct(product) {
+  const { data, error } = await supabase.from('products').insert(product).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateProduct(id, updates) {
+  const { data, error } = await supabase.from('products').update(updates).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteProduct(id) {
+  const { error } = await supabase.from('products').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getMessages() {
+  await migrate('messages', 'yusano_messages', null, m => ({
+    name: m.name,
+    email: m.email,
+    subject: m.subject || '',
+    message: m.message || '',
+    read: m.read || false,
+    created_at: m.date || m.created_at || new Date().toISOString(),
+  }))
+  const { data, error } = await supabase.from('messages').select('*').order('id', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function addMessage(msg) {
+  const { data, error } = await supabase.from('messages').insert({
+    name: msg.name,
+    email: msg.email,
+    subject: msg.subject || '',
+    message: msg.message || '',
+  }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function markRead(id) {
+  const { error } = await supabase.from('messages').update({ read: true }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteMessage(id) {
+  const { error } = await supabase.from('messages').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getCategories() {
+  await migrate('categories', 'yusano_categories', [
+    { id: 1, nameId: 'Mining', nameEn: 'Mining' },
+    { id: 2, nameId: 'Oil & Gas', nameEn: 'Oil & Gas' },
+  ])
+  const { data, error } = await supabase.from('categories').select('*').order('id')
+  if (error) throw error
+  return data || []
+}
+
+export async function addCategory(category) {
+  const { data, error } = await supabase.from('categories').insert({
+    nameId: category.nameId,
+    nameEn: category.nameEn,
+  }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCategory(id) {
+  const { error } = await supabase.from('categories').delete().eq('id', id)
+  if (error) throw error
+}
+
+export function login(email, password) {
+  if (email !== ADMIN_EMAIL) return false
+  const storedHash = localStorage.getItem('yusano_hash')
+  const validHash = storedHash || btoa('admin123')
+  if (!storedHash) localStorage.setItem('yusano_hash', validHash)
+  if (btoa(password) === validHash) {
+    localStorage.setItem('yusano_auth', JSON.stringify({ email, loggedIn: Date.now() }))
+    return true
+  }
+  return false
+}
+
+export function logout() {
+  localStorage.removeItem('yusano_auth')
+}
+
+export function isLoggedIn() {
+  try {
+    const a = JSON.parse(localStorage.getItem('yusano_auth') || '{}')
+    return a.loggedIn && a.email === ADMIN_EMAIL
+  } catch { return false }
+}
+
+export function changePassword(currentPassword, newPassword) {
+  const storedHash = localStorage.getItem('yusano_hash')
+  if (btoa(currentPassword) !== storedHash) return false
+  localStorage.setItem('yusano_hash', btoa(newPassword))
+  return true
+}
+
+export const ADMIN_EMAIL_CONST = ADMIN_EMAIL
 
 const defaultProducts = [
   {
@@ -161,7 +307,7 @@ const defaultProducts = [
     category: { id: 'Mining', en: 'Mining' },
     description: {
       id: 'Peralatan las lengkap untuk kebutuhan fabrikasi, konstruksi, dan perbaikan industri. Tersedia mesin las teknologi inverter terbaru, consumables, dan aksesoris pendukung dari merek-merek terpercaya.\n\nTipe Mesin Las:\n- MMA (Manual Metal Arc / Stick Welder)\n- TIG (Tungsten Inert Gas) AC/DC\n- MIG/MAG (Gas Metal Arc Welder)\n- Plasma Cutter\n- Spot Welder\n- Submerged Arc Welder\n\nDaya Mesin:\n- 200A hingga 600A\n- Inverter Technology (hemat listrik)\n- Portable dan industrial grade\n\nConsumables:\n- Elektroda (E6013, E7018, E7016, E308)\n- Kawat Las (ER70S-6, ER308, ER309)\n- Gas CO2, Argon, Mixed Gas\n- Grinding Wheel, Wire Brush, Holder\n\nMerek Unggulan:\n- Lincoln Electric, Miller, Esab\n- Redbo, Westco\n\nAplikasi:\n- Fabrikasi baja dan konstruksi\n- Perbaikan alat berat\n- Industri minyak dan gas\n- Pipa dan tangki tekanan\n- Galangan kapal',
-      en: 'Complete welding equipment for fabrication, construction, and industrial repair needs. Available latest inverter technology welding machines, consumables, and supporting accessories from trusted brands.\n\nWelding Machine Types:\n- MMA (Manual Metal Arc / Stick Welder)\n- TIG (Tungsten Inert Gas) AC/DC\n- MIG/MAG (Gas Metal Arc Welder)\n- Plasma Cutter\n- Spot Welder\n- Submerged Arc Welder\n\nMachine Power:\n- 200A to 600A\n- Inverter Technology (power efficient)\n- Portable and industrial grade\n\nConsumables:\n- Electrodes (E6013, E7018, E7016, E308)\n- Welding Wire (ER70S-6, ER308, ER309)\n- CO2, Argon, Mixed Gas\n- Grinding Wheel, Wire Brush, Holder\n\nLeading Brands:\n- Lincoln Electric, Miller, Esab\n- Redbo, Westco\n\nApplications:\n- Steel fabrication and construction\n- Heavy equipment repair\n- Oil and gas industry\n- Pipe and pressure vessel\n- Shipyard',
+      en: 'Complete welding equipment for fabrication, construction, and industrial repair needs. Latest inverter technology welding machines, consumables, and supporting accessories from trusted brands.\n\nWelding Machine Types:\n- MMA (Manual Metal Arc / Stick Welder)\n- TIG (Tungsten Inert Gas) AC/DC\n- MIG/MAG (Gas Metal Arc Welder)\n- Plasma Cutter\n- Spot Welder\n- Submerged Arc Welder\n\nMachine Power:\n- 200A to 600A\n- Inverter Technology (power efficient)\n- Portable and industrial grade\n\nConsumables:\n- Electrodes (E6013, E7018, E7016, E308)\n- Welding Wire (ER70S-6, ER308, ER309)\n- CO2, Argon, Mixed Gas\n- Grinding Wheel, Wire Brush, Holder\n\nLeading Brands:\n- Lincoln Electric, Miller, Esab\n- Redbo, Westco\n\nApplications:\n- Steel fabrication and construction\n- Heavy equipment repair\n- Oil and gas industry\n- Pipe and pressure vessel\n- Shipyard',
     },
     features: [
       { id: 'Mesin las inverter teknologi terbaru', en: 'Latest inverter welding technology' },
@@ -181,16 +327,16 @@ const defaultProducts = [
     name: { id: 'Wet Gas Compressor (WGC)', en: 'Wet Gas Compressor (WGC)' },
     category: { id: 'Oil & Gas', en: 'Oil & Gas' },
     description: {
-      id: 'After extensive research and development, we are thrilled to introduce the Wet Gas Compressor. The WGC is the only small-frame electric direct drive reciprocating compressor that is capable of processing liquids – including liquid slugs – through itself. The WGC pictured is 30hp and has a 5 inch cylinder, with a maximum differential pressure of 200 psi and flow approximately 1.5x that of our CHC1050. Several power, flow and pressure configurations are available.\n\nStandard Features :\n- Highly efficient electric drive reciprocating compressor\n- Rates up to 360 mscf/d @ 30psi suction\n- Maximum ∆P up to 480psi\n- 150% more capacity than our largest HCG\n- 100% turndown capability\n- Easily processes liquids: slugs and entrained fluids\n- Ideally suited for casing gas and VRU applications\n- Optimized power utilization\n- No hydraulic system to maintain\n- Extremely robust intake and discharge valve design\n- Compression element can be serviced on site\n- No additional lifting equipment required for overhaul\n- Superior user interface – web browser HMI\n- All other features of HCG Compressor\n- Liquid handling capability – can process 100% liquids intermittently, at reduced capacity, and up to 5% of displacement at full speed\n- Capable of handling both steady entrained liquids and large slugs\n- Simple and reliable\n- Few moving parts\n- No pneumatic valves, separator or liquid pumps\n- Low speed, long stroke compression cycle\n- Low cost – easy to replace wear parts\n- Seals mounted in single piece seal cartridge for quick replacement\n- High shut in pressure rating – 1100 psi standard, 1500 (ANSI 600) optional – typically no ESD required\n- VFD speed control and auto start/stop\n- Easy and inexpensive to install and move\n- NACE (MRO175) materials standard\n\nOptions/Configurations:\n- Electric heat trace\n- Inlet or discharge cooler\n- Air conditioning\n- Optional satellite reporting system\n- 3" cylinder (550 psi ΔP)\n- 4" cylinder (310 psi ΔP)\n- 1500 psi shut in pressure',
-      en: 'After extensive research and development, we are thrilled to introduce the Wet Gas Compressor. The WGC is the only small-frame electric direct drive reciprocating compressor that is capable of processing liquids – including liquid slugs – through itself. The WGC pictured is 30hp and has a 5 inch cylinder, with a maximum differential pressure of 200 psi and flow approximately 1.5x that of our CHC1050. Several power, flow and pressure configurations are available.\n\nStandard Features :\n- Highly efficient electric drive reciprocating compressor\n- Rates up to 360 mscf/d @ 30psi suction\n- Maximum ∆P up to 480psi\n- 150% more capacity than our largest HCG\n- 100% turndown capability\n- Easily processes liquids: slugs and entrained fluids\n- Ideally suited for casing gas and VRU applications\n- Optimized power utilization\n- No hydraulic system to maintain\n- Extremely robust intake and discharge valve design\n- Compression element can be serviced on site\n- No additional lifting equipment required for overhaul\n- Superior user interface – web browser HMI\n- All other features of HCG Compressor\n- Liquid handling capability – can process 100% liquids intermittently, at reduced capacity, and up to 5% of displacement at full speed\n- Capable of handling both steady entrained liquids and large slugs\n- Simple and reliable\n- Few moving parts\n- No pneumatic valves, separator or liquid pumps\n- Low speed, long stroke compression cycle\n- Low cost – easy to replace wear parts\n- Seals mounted in single piece seal cartridge for quick replacement\n- High shut in pressure rating – 1100 psi standard, 1500 (ANSI 600) optional – typically no ESD required\n- VFD speed control and auto start/stop\n- Easy and inexpensive to install and move\n- NACE (MRO175) materials standard\n\nOptions/Configurations:\n- Electric heat trace\n- Inlet or discharge cooler\n- Air conditioning\n- Optional satellite reporting system\n- 3" cylinder (550 psi ΔP)\n- 4" cylinder (310 psi ΔP)\n- 1500 psi shut in pressure',
+      id: 'Setelah penelitian dan pengembangan yang ekstensif, kami dengan bangga memperkenalkan Wet Gas Compressor (WGC). WGC adalah satu-satunya small-frame electric direct drive reciprocating compressor yang mampu memproses cairan - termasuk liquid slugs - melalui dirinya sendiri. WGC yang digambarkan adalah 30hp dengan silinder 5 inci, tekanan diferensial maksimum 200 psi dan aliran sekitar 1,5x dari CHC1050 kami. Beberapa konfigurasi daya, aliran, dan tekanan tersedia.\n\nFitur Standar:\n- Electric drive reciprocating compressor yang sangat efisien\n- Kapasitas hingga 360 mscf/d @ 30psi suction\n- ΔP maksimum hingga 480psi\n- 150% lebih banyak kapasitas dari HCG terbesar kami\n- 100% kemampuan turndown\n- Mudah memproses cairan: slugs dan entrained fluids\n- Sangat cocok untuk casing gas dan aplikasi VRU\n- Pemanfaatan daya yang optimal\n- Tidak ada sistem hidrolik yang perlu dirawat\n- Desain katup intake dan discharge yang sangat kokoh\n- Elemen kompresi dapat diservis di lokasi\n- Tidak diperlukan alat angkat tambahan untuk overhaul\n- Antarmuka pengguna yang unggul - web browser HMI\n- Semua fitur lain dari HCG Compressor\n- Kemampuan penanganan cairan - dapat memproses 100% cairan secara intermiten, pada kapasitas yang berkurang, dan hingga 5% dari perpindahan pada kecepatan penuh\n- Mampu menangani cairan entrained yang stabil dan large slugs\n- Sederhana dan andal\n- Sedikit bagian yang bergerak\n- Tidak ada katup pneumatik, separator, atau pompa cairan\n- Siklus kompresi kecepatan rendah, langkah panjang\n- Biaya rendah - suku cadang aus mudah diganti\n- Seal dipasang dalam seal cartridge satu bagian untuk penggantian cepat\n- Peringkat tekanan shut in tinggi - standar 1100 psi, 1500 (ANSI 600) opsional',
+      en: 'After extensive research and development, we are thrilled to introduce the Wet Gas Compressor. The WGC is the only small-frame electric direct drive reciprocating compressor that is capable of processing liquids - including liquid slugs - through itself. The WGC pictured is 30hp and has a 5 inch cylinder, with a maximum differential pressure of 200 psi and flow approximately 1.5x that of our CHC1050. Several power, flow and pressure configurations are available.\n\nStandard Features:\n- Highly efficient electric drive reciprocating compressor\n- Rates up to 360 mscf/d @ 30psi suction\n- Maximum ΔP up to 480psi\n- 150% more capacity than our largest HCG\n- 100% turndown capability\n- Easily processes liquids: slugs and entrained fluids\n- Ideally suited for casing gas and VRU applications\n- Optimized power utilization\n- No hydraulic system to maintain\n- Extremely robust intake and discharge valve design\n- Compression element can be serviced on site\n- No additional lifting equipment required for overhaul\n- Superior user interface - web browser HMI\n- All other features of HCG Compressor\n- Liquid handling capability - can process 100% liquids intermittently, at reduced capacity, and up to 5% of displacement at full speed\n- Capable of handling both steady entrained liquids and large slugs\n- Simple and reliable\n- Few moving parts\n- No pneumatic valves, separator or liquid pumps\n- Low speed, long stroke compression cycle\n- Low cost - easy to replace wear parts\n- Seals mounted in single piece seal cartridge for quick replacement\n- High shut in pressure rating - 1100 psi standard, 1500 (ANSI 600) optional - typically no ESD required\n- VFD speed control and auto start/stop\n- Easy and inexpensive to install and move\n- NACE (MRO175) materials standard\n\nOptions/Configurations:\n- Electric heat trace\n- Inlet or discharge cooler\n- Air conditioning\n- Optional satellite reporting system\n- 3" cylinder (550 psi ΔP)\n- 4" cylinder (310 psi ΔP)\n- 15-200 hp range\n- Class 1 Division 2 area classification',
     },
     features: [
-      { id: 'Teknologi twin-screw canggih', en: 'Advanced twin-screw technology' },
-      { id: 'Mampu tangani kandungan cairan hingga 99%', en: 'Handles liquid content up to 99%' },
+      { id: 'Teknologi reciprocating canggih', en: 'Advanced reciprocating technology' },
+      { id: 'Mampu tangani kandungan cairan hingga 100%', en: 'Handles liquid content up to 100%' },
       { id: 'Perawatan rendah dan handal', en: 'Low maintenance and reliable' },
     ],
     specs: [
-      { key: { id: 'Tipe', en: 'Type' }, value: { id: 'Twin-Screw Compressor', en: 'Twin-Screw Compressor' } },
+      { key: { id: 'Tipe', en: 'Type' }, value: { id: 'Electric Direct Drive Reciprocating', en: 'Electric Direct Drive Reciprocating' } },
       { key: { id: 'Kapasitas', en: 'Capacity' }, value: { id: '0.5 - 20 MMSCFD', en: '0.5 - 20 MMSCFD' } },
       { key: { id: 'Tekanan', en: 'Pressure' }, value: { id: '50 - 1500 PSI', en: '50 - 1500 PSI' } },
       { key: { id: 'Aplikasi', en: 'Application' }, value: { id: 'Gas Gathering, Flare Gas Recovery', en: 'Gas Gathering, Flare Gas Recovery' } },
@@ -223,8 +369,8 @@ const defaultProducts = [
     name: { id: 'Hydraulic Casing Gas (HCG)', en: 'Hydraulic Casing Gas (HCG)' },
     category: { id: 'Oil & Gas', en: 'Oil & Gas' },
     description: {
-      id: 'Sistem Hydraulic Casing Gas (HCG) untuk pengelolaan gas casing pada sumur migas secara efisien dan ramah lingkungan. Teknologi ejector hidrolik yang memanfaatkan energi dari fluida bertekanan untuk mengkompresi dan mengalirkan gas casing tanpa kompresor mekanis.\n\nKomponen Sistem:\n- Hydraulic Ejector (main unit)\n- Power Fluid Pump\n- Separator dan Control Panel\n- Piping dan Instrumentasi\n\nSpesifikasi Teknis:\n- Tekanan Kerja: 100 - 2000 PSI\n- Material: Stainless Steel, Duplex\n- Kapasitas gas: hingga 15 MMSCFD\n\nKeunggulan:\n- Zero emission — ramah lingkungan\n- Tidak ada bagian bergerak (no moving parts)\n- Biaya operasi dan perawatan rendah\n- Meningkatkan produksi minyak dengan mengurangi back pressure\n- Instalasi mudah dan cepat\n- Operasi manual dan otomatis\n\nAplikasi:\n- Casing gas management di sumur produksi\n- Wellhead compression\n- VRU (Vapor Recovery Unit)\n- Enhanced Oil Recovery (EOR)\n- Lapangan migas marginal',
-      en: 'Hydraulic Casing Gas (HCG) system for efficient and environmentally friendly casing gas management in oil and gas wells. Hydraulic ejector technology that utilizes energy from pressurized fluid to compress and transfer casing gas without mechanical compressors.\n\nSystem Components:\n- Hydraulic Ejector (main unit)\n- Power Fluid Pump\n- Separator and Control Panel\n- Piping and Instrumentation\n\nTechnical Specifications:\n- Working Pressure: 100 - 2000 PSI\n- Material: Stainless Steel, Duplex\n- Gas capacity: up to 15 MMSCFD\n\nAdvantages:\n- Zero emission — environmentally friendly\n- No moving parts\n- Low operating and maintenance cost\n- Increases oil production by reducing back pressure\n- Easy and quick installation\n- Manual and automatic operation\n\nApplications:\n- Casing gas management in production wells\n- Wellhead compression\n- VRU (Vapor Recovery Unit)\n- Enhanced Oil Recovery (EOR)\n- Marginal oil and gas fields',
+      id: 'Sistem Hydraulic Casing Gas (HCG) untuk pengelolaan gas casing pada sumur migas secara efisien dan ramah lingkungan. Teknologi ejector hidrolik yang memanfaatkan energi dari fluida bertekanan untuk mengkompresi dan mengalirkan gas casing tanpa kompresor mekanis.\n\nKomponen Sistem:\n- Hydraulic Ejector (main unit)\n- Power Fluid Pump\n- Separator dan Control Panel\n- Piping dan Instrumentasi\n\nSpesifikasi Teknis:\n- Tekanan Kerja: 100 - 2000 PSI\n- Material: Stainless Steel, Duplex\n- Kapasitas gas: hingga 15 MMSCFD\n\nKeunggulan:\n- Zero emission - ramah lingkungan\n- Tidak ada bagian bergerak (no moving parts)\n- Biaya operasi dan perawatan rendah\n- Meningkatkan produksi minyak dengan mengurangi back pressure\n- Instalasi mudah dan cepat\n- Operasi manual dan otomatis\n\nAplikasi:\n- Casing gas management di sumur produksi\n- Wellhead compression\n- VRU (Vapor Recovery Unit)\n- Enhanced Oil Recovery (EOR)\n- Lapangan migas marginal',
+      en: 'Hydraulic Casing Gas (HCG) system for efficient and environmentally friendly casing gas management in oil and gas wells. Hydraulic ejector technology that utilizes energy from pressurized fluid to compress and transfer casing gas without mechanical compressors.\n\nSystem Components:\n- Hydraulic Ejector (main unit)\n- Power Fluid Pump\n- Separator and Control Panel\n- Piping and Instrumentation\n\nTechnical Specifications:\n- Working Pressure: 100 - 2000 PSI\n- Material: Stainless Steel, Duplex\n- Gas capacity: up to 15 MMSCFD\n\nAdvantages:\n- Zero emission - environmentally friendly\n- No moving parts\n- Low operating and maintenance cost\n- Increases oil production by reducing back pressure\n- Easy and quick installation\n- Manual and automatic operation\n\nApplications:\n- Casing gas management in production wells\n- Wellhead compression\n- VRU (Vapor Recovery Unit)\n- Enhanced Oil Recovery (EOR)\n- Marginal oil and gas fields',
     },
     features: [
       { id: 'Ramah lingkungan (zero emission)', en: 'Eco-friendly (zero emission)' },
@@ -240,113 +386,3 @@ const defaultProducts = [
     image: '',
   },
 ]
-
-export function getProductById(id) {
-  return getProducts().find(p => p.id === Number(id)) || null
-}
-
-export const iconOptions = [
-  { value: 'pipe', label: 'Pipe' },
-  { value: 'valve', label: 'Valve' },
-  { value: 'bolt', label: 'Bolt' },
-  { value: 'generator', label: 'Generator' },
-  { value: 'safety', label: 'Safety' },
-  { value: 'tool', label: 'Tool' },
-  { value: 'oilgas', label: 'Oil & Gas' },
-]
-
-function seed() {
-  const stored = localStorage.getItem('yusano_products')
-  const version = Number(localStorage.getItem('yusano_products_version'))
-  if (!stored || version < PRODUCTS_VERSION) {
-    localStorage.setItem('yusano_products', JSON.stringify(defaultProducts))
-    localStorage.setItem('yusano_products_version', String(PRODUCTS_VERSION))
-  }
-}
-
-export function getProducts() {
-  seed()
-  return JSON.parse(localStorage.getItem('yusano_products') || '[]')
-}
-
-export function saveProducts(products) {
-  localStorage.setItem('yusano_products', JSON.stringify(products))
-}
-
-export function getMessages() {
-  return JSON.parse(localStorage.getItem('yusano_messages') || '[]')
-}
-
-export function saveMessages(messages) {
-  localStorage.setItem('yusano_messages', JSON.stringify(messages))
-}
-
-export function addMessage(msg) {
-  const msgs = getMessages()
-  msgs.unshift({ id: Date.now(), date: new Date().toISOString(), read: false, ...msg })
-  saveMessages(msgs)
-  return msgs
-}
-
-export function markRead(id) {
-  const msgs = getMessages().map(m => m.id === id ? { ...m, read: true } : m)
-  saveMessages(msgs)
-  return msgs
-}
-
-export function removeMessage(id) {
-  const msgs = getMessages().filter(m => m.id !== id)
-  saveMessages(msgs)
-  return msgs
-}
-
-function seedCategories() {
-  const stored = localStorage.getItem('yusano_categories')
-  const version = Number(localStorage.getItem('yusano_categories_version'))
-  if (!stored || version < CATEGORIES_VERSION) {
-    localStorage.setItem('yusano_categories', JSON.stringify(defaultCategories))
-    localStorage.setItem('yusano_categories_version', String(CATEGORIES_VERSION))
-  }
-}
-
-export function getCategories() {
-  seedCategories()
-  return JSON.parse(localStorage.getItem('yusano_categories') || '[]')
-}
-
-export function saveCategories(categories) {
-  localStorage.setItem('yusano_categories', JSON.stringify(categories))
-}
-
-export function changePassword(currentPassword, newPassword) {
-  const storedHash = localStorage.getItem('yusano_hash')
-  if (btoa(currentPassword) !== storedHash) return false
-  localStorage.setItem('yusano_hash', btoa(newPassword))
-  return true
-}
-
-export function login(email, password) {
-  if (email !== ADMIN_EMAIL) return false
-  const storedHash = localStorage.getItem('yusano_hash')
-  const validHash = storedHash || btoa('admin123')
-  if (!storedHash) localStorage.setItem('yusano_hash', validHash)
-  if (btoa(password) === validHash) {
-    localStorage.setItem('yusano_auth', JSON.stringify({ email, loggedIn: Date.now() }))
-    return true
-  }
-  return false
-}
-
-export function logout() {
-  localStorage.removeItem('yusano_auth')
-}
-
-export function isLoggedIn() {
-  try {
-    const a = JSON.parse(localStorage.getItem('yusano_auth') || '{}')
-    return a.loggedIn && a.email === ADMIN_EMAIL
-  } catch { return false }
-}
-
-export const ADMIN_EMAIL_CONST = ADMIN_EMAIL
-

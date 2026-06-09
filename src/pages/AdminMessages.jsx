@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react'
-import { getMessages, markRead, removeMessage } from '../data/adminData'
+import { getMessages, markRead, deleteMessage } from '../data/adminData'
 
 export default function AdminMessages() {
   const [messages, setMessages] = useState([])
+  const [loading, setLoading] = useState(true)
   const [detail, setDetail] = useState(null)
   const [search, setSearch] = useState('')
 
-  useEffect(() => { setMessages(getMessages()) }, [])
+  useEffect(() => {
+    getMessages().then(data => {
+      setMessages(data)
+      setLoading(false)
+    })
+  }, [])
 
   const filteredMessages = messages.filter(m => {
     if (!search.trim()) return true
@@ -19,22 +25,24 @@ export default function AdminMessages() {
     )
   })
 
-  const refresh = () => setMessages(getMessages())
+  const refresh = () => getMessages().then(setMessages)
 
-  const handleView = (m) => {
+  const handleView = async (m) => {
     setDetail(m)
     if (!m.read) {
-      markRead(m.id)
+      await markRead(m.id)
       refresh()
     }
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!confirm('Hapus pesan ini?')) return
-    removeMessage(id)
+    await deleteMessage(id)
     refresh()
     setDetail(detail?.id === id ? null : detail)
   }
+
+  if (loading) return <div className="admin-loading">Memuat pesan...</div>
 
   return (
     <div className="admin-section">
@@ -52,7 +60,7 @@ export default function AdminMessages() {
           <div className="admin-detail-body">
             <p><strong>Dari:</strong> {detail.name} ({detail.email})</p>
             <p><strong>Subjek:</strong> {detail.subject}</p>
-            <p><strong>Tanggal:</strong> {new Date(detail.date).toLocaleString('id-ID')}</p>
+            <p><strong>Tanggal:</strong> {new Date(detail.created_at).toLocaleString('id-ID')}</p>
             <p><strong>Pesan:</strong></p>
             <div className="admin-detail-message">{detail.message}</div>
           </div>
@@ -90,7 +98,7 @@ export default function AdminMessages() {
             {filteredMessages.map(m => (
               <tr key={m.id} className={!m.read ? 'admin-unread' : ''}>
                 <td>{!m.read ? <span className="admin-dot" title="Belum dibaca" /> : ''}</td>
-                <td>{new Date(m.date).toLocaleDateString('id-ID')}</td>
+                <td>{new Date(m.created_at).toLocaleDateString('id-ID')}</td>
                 <td>{m.name}</td>
                 <td>{m.email}</td>
                 <td>{m.subject}</td>
