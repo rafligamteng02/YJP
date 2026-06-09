@@ -12,114 +12,208 @@ export const iconOptions = [
   { value: 'oilgas', label: 'Oil & Gas' },
 ]
 
-async function migrate(table, localKey, defaults, transform) {
-  const { count } = await supabase.from(table).select('*', { count: 'exact', head: true })
-  if (count > 0) return
-  let data = localStorage.getItem(localKey)
-  if (data) {
-    data = JSON.parse(data)
-    localStorage.removeItem(localKey)
-  } else if (defaults) {
-    data = defaults
-  } else {
-    return
-  }
-  if (transform) data = data.map(transform)
-  await supabase.from(table).insert(data)
+// ===== LOCALSTORAGE FALLBACK HELPERS =====
+
+function getLocal(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) || fallback } catch { return fallback }
 }
 
+function setLocal(key, data) {
+  try { localStorage.setItem(key, JSON.stringify(data)) } catch {}
+}
+
+function localProducts() { return getLocal('yusano_products', []).map(p => ({ ...p, created_at: p.created_at || new Date().toISOString() })) }
+function localMessages() { return getLocal('yusano_messages', []).map(m => ({ ...m, created_at: m.date || m.created_at || new Date().toISOString() })) }
+function localCategories() { return getLocal('yusano_categories', []) }
+
+// ===== MIGRATE (best-effort) =====
+
+async function migrate(table, localKey, defaults, transform) {
+  if (!supabase) return
+  try {
+    const { count } = await supabase.from(table).select('*', { count: 'exact', head: true })
+    if (count > 0) return
+    let data = localStorage.getItem(localKey)
+    if (data) {
+      data = JSON.parse(data)
+    } else if (defaults) {
+      data = defaults
+    } else {
+      return
+    }
+    if (transform) data = data.map(transform)
+    const { error } = await supabase.from(table).insert(data)
+    if (!error) localStorage.removeItem(localKey)
+  } catch (e) {
+    console.warn(`Supabase migrate ${table}:`, e)
+  }
+}
+
+// ===== PRODUCTS =====
+
 export async function getProducts() {
-  await migrate('products', 'yusano_products', defaultProducts, d => ({
-    ...d,
-    created_at: d.created_at || new Date().toISOString(),
-  }))
-  const { data, error } = await supabase.from('products').select('*').order('id')
-  if (error) throw error
-  return data || []
+  if (supabase) {
+    try {
+      await migrate('products', 'yusano_products', defaultProducts, d => ({
+        ...d,
+        created_at: d.created_at || new Date().toISOString(),
+      }))
+      const { data, error } = await supabase.from('products').select('*').order('id')
+      if (!error && data) return data
+    } catch (e) { console.warn('getProducts fallback:', e) }
+  }
+  return localProducts()
 }
 
 export async function getProductById(id) {
-  const { data, error } = await supabase.from('products').select('*').eq('id', Number(id)).single()
-  if (error && error.code === 'PGRST116') return null
-  if (error) throw error
-  return data
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('products').select('*').eq('id', Number(id)).single()
+      if (!error && data) return data
+    } catch (e) { console.warn('getProductById fallback:', e) }
+  }
+  return localProducts().find(p => p.id === Number(id)) || null
 }
 
 export async function addProduct(product) {
-  const { data, error } = await supabase.from('products').insert(product).select().single()
-  if (error) throw error
-  return data
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('products').insert(product).select().single()
+      if (!error && data) return data
+    } catch (e) { console.warn('addProduct fallback:', e) }
+  }
+  const items = localProducts()
+  const item = { id: Date.now(), ...product, created_at: new Date().toISOString() }
+  items.push(item)
+  setLocal('yusano_products', items)
+  return item
 }
 
 export async function updateProduct(id, updates) {
-  const { data, error } = await supabase.from('products').update(updates).eq('id', id).select().single()
-  if (error) throw error
-  return data
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('products').update(updates).eq('id', id).select().single()
+      if (!error && data) return data
+    } catch (e) { console.warn('updateProduct fallback:', e) }
+  }
+  const items = localProducts().map(p => p.id === Number(id) ? { ...p, ...updates } : p)
+  setLocal('yusano_products', items)
+  return items.find(p => p.id === Number(id))
 }
 
 export async function deleteProduct(id) {
-  const { error } = await supabase.from('products').delete().eq('id', id)
-  if (error) throw error
+  if (supabase) {
+    try {
+      const { error } = await supabase.from('products').delete().eq('id', id)
+      if (!error) return
+    } catch (e) { console.warn('deleteProduct fallback:', e) }
+  }
+  setLocal('yusano_products', localProducts().filter(p => p.id !== Number(id)))
 }
 
+// ===== MESSAGES =====
+
 export async function getMessages() {
-  await migrate('messages', 'yusano_messages', null, m => ({
-    name: m.name,
-    email: m.email,
-    subject: m.subject || '',
-    message: m.message || '',
-    read: m.read || false,
-    created_at: m.date || m.created_at || new Date().toISOString(),
-  }))
-  const { data, error } = await supabase.from('messages').select('*').order('id', { ascending: false })
-  if (error) throw error
-  return data || []
+  if (supabase) {
+    try {
+      await migrate('messages', 'yusano_messages', null, m => ({
+        name: m.name,
+        email: m.email,
+        subject: m.subject || '',
+        message: m.message || '',
+        read: m.read || false,
+        created_at: m.date || m.created_at || new Date().toISOString(),
+      }))
+      const { data, error } = await supabase.from('messages').select('*').order('id', { ascending: false })
+      if (!error && data) return data
+    } catch (e) { console.warn('getMessages fallback:', e) }
+  }
+  return localMessages().sort((a, b) => (b.id || 0) - (a.id || 0))
 }
 
 export async function addMessage(msg) {
-  const { data, error } = await supabase.from('messages').insert({
-    name: msg.name,
-    email: msg.email,
-    subject: msg.subject || '',
-    message: msg.message || '',
-  }).select().single()
-  if (error) throw error
-  return data
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('messages').insert({
+        name: msg.name,
+        email: msg.email,
+        subject: msg.subject || '',
+        message: msg.message || '',
+      }).select().single()
+      if (!error && data) return data
+    } catch (e) { console.warn('addMessage fallback:', e) }
+  }
+  const items = localMessages()
+  const item = { id: Date.now(), date: new Date().toISOString(), read: false, ...msg }
+  items.unshift(item)
+  setLocal('yusano_messages', items)
+  return item
 }
 
 export async function markRead(id) {
-  const { error } = await supabase.from('messages').update({ read: true }).eq('id', id)
-  if (error) throw error
+  if (supabase) {
+    try {
+      const { error } = await supabase.from('messages').update({ read: true }).eq('id', id)
+      if (!error) return
+    } catch (e) { console.warn('markRead fallback:', e) }
+  }
+  setLocal('yusano_messages', localMessages().map(m => m.id === Number(id) ? { ...m, read: true } : m))
 }
 
 export async function deleteMessage(id) {
-  const { error } = await supabase.from('messages').delete().eq('id', id)
-  if (error) throw error
+  if (supabase) {
+    try {
+      const { error } = await supabase.from('messages').delete().eq('id', id)
+      if (!error) return
+    } catch (e) { console.warn('deleteMessage fallback:', e) }
+  }
+  setLocal('yusano_messages', localMessages().filter(m => m.id !== Number(id)))
 }
 
+// ===== CATEGORIES =====
+
 export async function getCategories() {
-  await migrate('categories', 'yusano_categories', [
-    { id: 1, nameId: 'Mining', nameEn: 'Mining' },
-    { id: 2, nameId: 'Oil & Gas', nameEn: 'Oil & Gas' },
-  ])
-  const { data, error } = await supabase.from('categories').select('*').order('id')
-  if (error) throw error
-  return data || []
+  if (supabase) {
+    try {
+      await migrate('categories', 'yusano_categories', [
+        { id: 1, nameId: 'Mining', nameEn: 'Mining' },
+        { id: 2, nameId: 'Oil & Gas', nameEn: 'Oil & Gas' },
+      ])
+      const { data, error } = await supabase.from('categories').select('*').order('id')
+      if (!error && data) return data
+    } catch (e) { console.warn('getCategories fallback:', e) }
+  }
+  return localCategories()
 }
 
 export async function addCategory(category) {
-  const { data, error } = await supabase.from('categories').insert({
-    nameId: category.nameId,
-    nameEn: category.nameEn,
-  }).select().single()
-  if (error) throw error
-  return data
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('categories').insert({
+        nameId: category.nameId,
+        nameEn: category.nameEn,
+      }).select().single()
+      if (!error && data) return data
+    } catch (e) { console.warn('addCategory fallback:', e) }
+  }
+  const items = localCategories()
+  const item = { id: Date.now(), ...category }
+  items.push(item)
+  setLocal('yusano_categories', items)
+  return item
 }
 
 export async function deleteCategory(id) {
-  const { error } = await supabase.from('categories').delete().eq('id', id)
-  if (error) throw error
+  if (supabase) {
+    try {
+      const { error } = await supabase.from('categories').delete().eq('id', id)
+      if (!error) return
+    } catch (e) { console.warn('deleteCategory fallback:', e) }
+  }
+  setLocal('yusano_categories', localCategories().filter(c => c.id !== Number(id)))
 }
+
+// ===== AUTH (localStorage only) =====
 
 export function login(email, password) {
   if (email !== ADMIN_EMAIL) return false
